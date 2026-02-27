@@ -1,0 +1,56 @@
+{
+  "name": "@mkrz/cocon",
+  "version": "0.0.1",
+  "description": "Clone npm package source code for agentic coding tool context",
+  "license": "MIT",
+  "author": "mkreuzmayr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mkreuzmayr/cocon.git"
+  },
+  "bin": {
+    "cocon": "dist/cocon.mjs",
+    "cocon-mcp": "dist/cocon-mcp.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prebuild": "rm -rf dist && mkdir -p dist",
+    "build": "bun run build:cli && bun run build:mcp",
+    "build:cli": "bun build src/index.ts --target=node --outfile dist/cocon.mjs --format esm",
+    "build:mcp": "bun build src/mcp-server.ts --target=node --outfile dist/cocon-mcp.mjs --format esm",
+    "compile": "bun run compile:cli && bun run compile:mcp",
+    "compile:cli": "bun build --compile src/index.ts --outfile dist/cocon",
+    "compile:mcp": "bun build --compile src/mcp-server.ts --outfile dist/cocon-mcp",
+    "dev": "bun run ./src/index.ts",
+    "mcp": "bun run ./src/mcp-server.ts",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.27.1",
+    "@types/bun": "1.3.9",
+    "@types/react": "19.2.14",
+    "arkregex": "0.0.5",
+    "commander": "14.0.3",
+    "ink": "6.8.0",
+    "oxfmt": "0.35.0",
+    "oxlint": "1.50.0",
+    "react": "19.2.4",
+    "react-devtools-core": "7.0.1",
+    "tar": "7.5.9",
+    "typescript": "5.9.3",
+    "zod": "4.3.6",
+    "zustand": "5.0.11"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

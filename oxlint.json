@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "import"],
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-console": "warn",
+    "eqeqeq": "error",
+    "import/no-duplicates": "error",
+    "react/no-danger": "warn",
+    "react/no-children-prop": "off",
+    "typescript/no-explicit-any": "warn"
+  },
+  "ignorePatterns": ["node_modules", "dist", ".output", ".turbo", ".tanstack"]
+}

@@ -2,23 +2,92 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import type {
-  GetCachedSourceOptions,
-  SourceStorageOptions,
-  StoredPackageEntry,
-} from './types.ts';
+import type { GetCachedSourceOptions, StoredPackageEntry } from './types.ts';
 
-export function getStoreDir(options?: {
-  global?: boolean;
-  cwd?: string;
-}): string {
-  if (!options?.global) {
-    const cwd = options?.cwd ?? process.cwd();
+export function getStoreDir(): string {
+  return path.join(os.homedir(), '.cocon', 'packages');
+}
 
-    return path.join(cwd, '.cocon', 'packages');
+export function getProjectStoreDir(cwd: string): string {
+  return path.join(cwd, '.cocon', 'packages');
+}
+
+export function getStoredPackagePath(
+  storeDir: string,
+  packageName: string,
+  version: string
+): string {
+  return path.join(storeDir, `${packageName}@${version}`);
+}
+
+export async function ensureStoreDir(): Promise<string> {
+  const storeDir = getStoreDir();
+  await fsp.mkdir(storeDir, { recursive: true });
+  return storeDir;
+}
+
+async function pathsMatch(pathA: string, pathB: string): Promise<boolean> {
+  const [resolvedA, resolvedB] = await Promise.all([
+    fsp.realpath(pathA).catch(() => null),
+    fsp.realpath(pathB).catch(() => null),
+  ]);
+
+  return resolvedA !== null && resolvedA === resolvedB;
+}
+
+async function createDirectorySymlink(
+  targetPath: string,
+  linkPath: string
+): Promise<void> {
+  const symlinkTarget =
+    process.platform === 'win32'
+      ? targetPath
+      : path.relative(path.dirname(linkPath), targetPath);
+  const symlinkType = process.platform === 'win32' ? 'junction' : 'dir';
+
+  await fsp.symlink(symlinkTarget, linkPath, symlinkType);
+}
+
+export async function ensureProjectPackageLink(
+  cwd: string,
+  packageName: string,
+  version: string
+): Promise<string> {
+  const storeDir = await ensureStoreDir();
+  const targetPath = getStoredPackagePath(storeDir, packageName, version);
+  const linkPath = getStoredPackagePath(
+    getProjectStoreDir(cwd),
+    packageName,
+    version
+  );
+
+  const targetStats = await fsp.stat(targetPath).catch(() => null);
+  if (!targetStats?.isDirectory()) {
+    throw new Error(`Cached package source is missing: ${targetPath}`);
   }
 
-  return path.join(os.homedir(), '.cocon', 'packages');
+  await fsp.mkdir(path.dirname(linkPath), { recursive: true });
+
+  const existing = await fsp.lstat(linkPath).catch(() => null);
+  if (!existing) {
+    await createDirectorySymlink(targetPath, linkPath);
+    return linkPath;
+  }
+
+  if (existing.isSymbolicLink() && (await pathsMatch(linkPath, targetPath))) {
+    return linkPath;
+  }
+
+  if (existing.isDirectory() && !(await pathsMatch(linkPath, targetPath))) {
+    await fsp.rm(linkPath, { recursive: true, force: true });
+  } else if (!existing.isSymbolicLink()) {
+    await fsp.rm(linkPath, { recursive: true, force: true });
+  } else {
+    await fsp.rm(linkPath, { recursive: true, force: true });
+  }
+
+  await createDirectorySymlink(targetPath, linkPath);
+  return linkPath;
 }
 
 function parseStoredPackageRelativePath(
@@ -110,11 +179,8 @@ export async function getStoredPackages(
   return packages;
 }
 
-export async function listCachedPackageSources(
-  cwd: string,
-  options?: SourceStorageOptions
-) {
-  const storeDir = getStoreDir({ global: options?.global, cwd });
+export async function listCachedPackageSources(_cwd?: string) {
+  const storeDir = getStoreDir();
 
   const packages = await getStoredPackages(storeDir);
 
@@ -125,11 +191,11 @@ export async function listCachedPackageSources(
 }
 
 export async function getCachedPackageSource(
-  cwd: string,
+  _cwd: string,
   packageName: string,
   options?: GetCachedSourceOptions
 ) {
-  const listResult = await listCachedPackageSources(cwd, options);
+  const listResult = await listCachedPackageSources();
 
   const matchingPackages = listResult.packages.filter(
     (pkg) =>

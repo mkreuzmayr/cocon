@@ -7,7 +7,6 @@ import { getStoreDir, getStoredPackages } from '../lib/store.ts';
 import type {
   CacheStatusEntry,
   CacheStatusResult,
-  SourceStorageOptions,
   StoredPackageEntry,
   TargetVersionSource,
 } from '../lib/types.ts';
@@ -30,11 +29,8 @@ function buildCachedVersionMap(
   return versionMap;
 }
 
-export async function getCacheStatus(
-  cwd: string,
-  options?: SourceStorageOptions
-): Promise<CacheStatusResult> {
-  const storeDir = getStoreDir({ global: options?.global, cwd });
+export async function getCacheStatus(cwd: string): Promise<CacheStatusResult> {
+  const storeDir = getStoreDir();
 
   const [dependencies, stored] = await Promise.all([
     getProjectDependencies(cwd),

@@ -68,7 +68,7 @@ export async function pruneCache(
   cwd: string,
   options?: PruneCacheOptions
 ): Promise<PruneCacheResult> {
-  const storeDir = getStoreDir({ global: options?.global, cwd });
+  const storeDir = getStoreDir();
 
   const keepLatest = Math.max(0, options?.keepLatest ?? 1);
   const keepProjectDependencies = options?.keepProjectDependencies ?? true;

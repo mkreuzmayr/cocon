@@ -1,8 +1,6 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
-import { getStoreDir } from '../../lib/store.ts';
 import type { PullProgressUpdate, PullResult } from '../../lib/types.ts';
-import { pullPackageForProject } from './lib/pull.ts';
 import type { PackageState } from './lib/types.ts';
 
 export interface PullRuntimeState {
@@ -11,6 +9,7 @@ export interface PullRuntimeState {
   running: boolean;
   done: boolean;
   storeDir: string;
+  projectStoreDir: string;
 }
 
 export type PullRuntimeStore = StoreApi<PullRuntimeState>;
@@ -24,6 +23,7 @@ export function createPullStore(props: {
     running: true,
     done: false,
     storeDir: '',
+    projectStoreDir: '',
   }));
 }
 
@@ -32,6 +32,7 @@ export interface PullRuntimeActions {
   recordResult: (result: PullResult) => void;
   finishRun: () => void;
   setStoreDir: (storeDir: string) => void;
+  setProjectStoreDir: (projectStoreDir: string) => void;
 }
 
 export function createPullStoreActions(
@@ -78,34 +79,8 @@ export function createPullStoreActions(
     setStoreDir: (storeDir) => {
       store.setState({ storeDir });
     },
+    setProjectStoreDir: (projectStoreDir) => {
+      store.setState({ projectStoreDir });
+    },
   };
-}
-
-export async function executePullAction(props: {
-  packages: string[];
-  global: boolean;
-  store: PullRuntimeStore;
-  cwd: string;
-}): Promise<void> {
-  const actions = createPullStoreActions(props.store);
-  actions.setStoreDir(getStoreDir({ global: props.global, cwd: props.cwd }));
-
-  try {
-    await Promise.all(
-      props.packages.map(async (packageName) => {
-        const result = await pullPackageForProject(
-          props.cwd,
-          packageName,
-          { global: props.global },
-          (update) => {
-            actions.updatePackage(packageName, update);
-          }
-        );
-
-        actions.recordResult(result);
-      })
-    );
-  } finally {
-    actions.finishRun();
-  }
 }

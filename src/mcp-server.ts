@@ -37,21 +37,12 @@ server.registerTool(
         .describe(
           "The npm package name (e.g., 'lodash' or '@tanstack/react-query')"
         ),
-      global: z
-        .boolean()
-        .optional()
-        .default(true)
-        .describe(
-          'Whether to use global storage (~/.cocon/packages). Set false for cwd-local ./.cocon/packages'
-        ),
     },
   },
-  async ({ cwd, packageName, global }) => {
+  async ({ cwd, packageName }) => {
     let result;
     try {
-      result = await ensurePackageSourceFromInstalled(cwd, packageName, {
-        global,
-      });
+      result = await ensurePackageSourceFromInstalled(cwd, packageName);
     } catch (error) {
       return {
         content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
@@ -99,19 +90,12 @@ server.registerTool(
         .describe(
           'Absolute path to the project working directory containing package.json'
         ),
-      global: z
-        .boolean()
-        .optional()
-        .default(true)
-        .describe(
-          'Whether to use global cache (~/.cocon/packages) or cwd-local cache'
-        ),
     },
   },
-  async ({ cwd, global }) => {
+  async ({ cwd }) => {
     let result;
     try {
-      result = await syncProjectDependencies(cwd, { global });
+      result = await syncProjectDependencies(cwd);
     } catch (error) {
       return {
         content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
@@ -129,7 +113,8 @@ server.registerTool(
 
     const success = result.results.filter((item) => item.status === 'complete');
     const failed = result.results.filter((item) => item.status === 'error');
-    const fromCache = success.filter((item) => item.fromCache).length;
+    const reused = success.filter((item) => item.fromCache).length;
+    const downloaded = success.length - reused;
 
     const lines = result.results.map((item) => {
       if (item.status === 'error') {
@@ -137,7 +122,7 @@ server.registerTool(
       }
 
       const version = item.version ? `@${item.version}` : '';
-      const source = item.fromCache ? 'cache hit' : 'downloaded';
+      const source = item.fromCache ? 'reused' : 'downloaded';
       return `- OK ${item.packageName}${version} (${source})`;
     });
 
@@ -146,10 +131,12 @@ server.registerTool(
         {
           type: 'text',
           text: `Synced dependencies into ${displayPath(result.storeDir)}
+Project links: ${displayPath(result.projectStoreDir)}
 Total: ${result.results.length}
 Succeeded: ${success.length}
 Failed: ${failed.length}
-Cache hits: ${fromCache}
+Reused: ${reused}
+Downloaded: ${downloaded}
 
 ${lines.join('\n')}`,
         },
@@ -170,19 +157,12 @@ server.registerTool(
         .describe(
           'Absolute path to the project working directory containing package.json'
         ),
-      global: z
-        .boolean()
-        .optional()
-        .default(true)
-        .describe(
-          'Whether to inspect global cache (~/.cocon/packages) or cwd-local cache'
-        ),
     },
   },
-  async ({ cwd, global }) => {
+  async ({ cwd }) => {
     let result;
     try {
-      result = await getCacheStatus(cwd, { global });
+      result = await getCacheStatus(cwd);
     } catch (error) {
       return {
         content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
@@ -242,13 +222,6 @@ server.registerTool(
         .describe(
           'Absolute path to the project working directory (used for keep-project-dependencies rule)'
         ),
-      global: z
-        .boolean()
-        .optional()
-        .default(true)
-        .describe(
-          'Whether to prune global cache (~/.cocon/packages) or cwd-local cache'
-        ),
       keepLatest: z
         .number()
         .int()
@@ -275,18 +248,10 @@ server.registerTool(
         .describe('If true, reports what would be removed without deleting'),
     },
   },
-  async ({
-    cwd,
-    global,
-    keepLatest,
-    keepProjectDependencies,
-    keep,
-    dryRun,
-  }) => {
+  async ({ cwd, keepLatest, keepProjectDependencies, keep, dryRun }) => {
     let result;
     try {
       result = await pruneCache(cwd, {
-        global,
         keepLatest,
         keepProjectDependencies,
         keep,
@@ -331,26 +296,17 @@ server.registerTool(
   'list_cached_package_sources',
   {
     description:
-      'List all cached package sources already available in the selected storage scope.',
+      'List all cached package sources already available in the shared cache.',
     inputSchema: {
       cwd: z
         .string()
-        .describe(
-          'Absolute path to the project working directory. Required when global=false.'
-        ),
-      global: z
-        .boolean()
-        .optional()
-        .default(true)
-        .describe(
-          'Whether to read global cache (~/.cocon/packages) or cwd-local cache'
-        ),
+        .describe('Absolute path to the project working directory'),
     },
   },
-  async ({ cwd, global }) => {
+  async ({ cwd }) => {
     let result;
     try {
-      result = await listCachedPackageSources(cwd, { global });
+      result = await listCachedPackageSources(cwd);
     } catch (error) {
       return {
         content: [{ type: 'text', text: `Error: ${(error as Error).message}` }],
@@ -394,9 +350,7 @@ server.registerTool(
     inputSchema: {
       cwd: z
         .string()
-        .describe(
-          'Absolute path to the project working directory. Required when global=false.'
-        ),
+        .describe('Absolute path to the project working directory'),
       packageName: z
         .string()
         .describe(
@@ -406,21 +360,13 @@ server.registerTool(
         .string()
         .optional()
         .describe('Optional exact version to select a single cache entry'),
-      global: z
-        .boolean()
-        .optional()
-        .default(true)
-        .describe(
-          'Whether to read global cache (~/.cocon/packages) or cwd-local cache'
-        ),
     },
   },
-  async ({ cwd, packageName, version, global }) => {
+  async ({ cwd, packageName, version }) => {
     let result;
     try {
       result = await getCachedPackageSource(cwd, packageName, {
         version,
-        global,
       });
     } catch (error) {
       return {

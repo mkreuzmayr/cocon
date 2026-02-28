@@ -7,9 +7,11 @@ import type { PackageState, StatusType } from '../lib/types.ts';
 export function StatusText({
   status,
   message,
+  fromCache,
 }: {
   status: StatusType;
   message?: string;
+  fromCache?: boolean;
 }): React.ReactElement {
   switch (status) {
     case 'pending':
@@ -21,7 +23,7 @@ export function StatusText({
     case 'downloading':
       return <Text color="cyan">Downloading...</Text>;
     case 'complete':
-      return <Text color="green">Complete</Text>;
+      return <Text color="green">{fromCache ? 'Reused' : 'Downloaded'}</Text>;
     case 'error':
       return <Text color="red">Error: {message}</Text>;
   }
@@ -70,7 +72,11 @@ export function PackageRow({ pkg }: { pkg: PackageState }): React.ReactElement {
       <Text> </Text>
       <Text bold>{displayName}</Text>
       <Text> </Text>
-      <StatusText status={pkg.status} message={pkg.error} />
+      <StatusText
+        status={pkg.status}
+        message={pkg.error}
+        fromCache={pkg.fromCache}
+      />
     </Box>
   );
 }

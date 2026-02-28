@@ -124,9 +124,7 @@ export async function resolveInstalledPackageFromCwd(
   // Try resolving package.json subpath directly (works when exports allow it)
   let directResolvedPath: string | null = null;
   try {
-    directResolvedPath = runtimeRequire.resolve(
-      `${packageName}/package.json`
-    );
+    directResolvedPath = runtimeRequire.resolve(`${packageName}/package.json`);
   } catch {
     // exports field may block this, fall back to resolving main entry
   }

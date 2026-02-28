@@ -4,19 +4,17 @@ import { Readable } from 'node:stream';
 
 import { extract } from 'tar';
 
-import { getStoreDir } from '../../../lib/store.ts';
-import type { StoreOptions } from '../../../lib/types.ts';
+import { ensureStoreDir, getStoredPackagePath } from '../../../lib/store.ts';
 import { fetchWithRetry } from './http.ts';
 
 export async function downloadAndExtract(
   url: string,
   packageName: string,
   version: string,
-  onProgress?: (stage: string) => void,
-  options?: StoreOptions
+  onProgress?: (stage: string) => void
 ): Promise<string> {
-  const storeDir = getStoreDir(options);
-  const outputDir = path.join(storeDir, `${packageName}@${version}`);
+  const storeDir = await ensureStoreDir();
+  const outputDir = getStoredPackagePath(storeDir, packageName, version);
 
   // Clean up existing directory if present
   try {

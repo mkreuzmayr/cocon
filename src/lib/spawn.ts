@@ -18,7 +18,10 @@ export function execAsync(
     proc.on('close', (code) => {
       resolve({
         exitCode: code ?? 1,
-        stdout: options?.stdout !== false ? Buffer.concat(stdoutChunks).toString('utf-8') : '',
+        stdout:
+          options?.stdout !== false
+            ? Buffer.concat(stdoutChunks).toString('utf-8')
+            : '',
         stderr: Buffer.concat(stderrChunks).toString('utf-8'),
       });
     });

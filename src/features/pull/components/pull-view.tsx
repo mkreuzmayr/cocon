@@ -12,11 +12,21 @@ export function PullView(props: {
   const packages = useStore(props.store, (state) => state.packages);
   const done = useStore(props.store, (state) => state.done);
   const storeDir = useStore(props.store, (state) => state.storeDir);
+  const projectStoreDir = useStore(
+    props.store,
+    (state) => state.projectStoreDir
+  );
 
   const successCount = packages.filter(
     (pkg) => pkg.status === 'complete'
   ).length;
   const errorCount = packages.filter((pkg) => pkg.status === 'error').length;
+  const reusedCount = packages.filter(
+    (pkg) => pkg.status === 'complete' && pkg.fromCache
+  ).length;
+  const downloadedCount = packages.filter(
+    (pkg) => pkg.status === 'complete' && pkg.fromCache === false
+  ).length;
 
   return (
     <Box flexDirection="column" padding={1}>
@@ -33,7 +43,7 @@ export function PullView(props: {
           {successCount > 0 && (
             <Text color="green">
               {successCount} package{successCount !== 1 ? 's' : ''} pulled
-              successfully
+              successfully ({reusedCount} reused, {downloadedCount} downloaded)
             </Text>
           )}
           {successCount > 0 && errorCount > 0 && <Text>, </Text>}
@@ -44,6 +54,7 @@ export function PullView(props: {
         ) : (
           <Text color="gray">Storing in {storeDir}</Text>
         )}
+        <Text color="gray">Linked in {projectStoreDir}</Text>
       </Box>
     </Box>
   );

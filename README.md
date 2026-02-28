@@ -1,16 +1,14 @@
 # Cocon
 
-`cocon` is a Bun + TypeScript tool that fetches npm package source code repositories into project storage to give agentic coding tools better context.
+`cocon` is a Bun + TypeScript tool that fetches npm package source code repositories into a shared cache to give agentic coding tools better context.
 
 It has two runtime surfaces:
 
 - A terminal CLI (`cocon`)
 - An MCP server binary (`cocon-mcp`)
 
-Storage location can be configured with a `global` boolean:
-
-- `global: false` (default) stores in `./.cocon/packages` for the provided/current working directory
-- `global: true` stores in `~/.cocon/packages`
+Package sources are always stored in `~/.cocon/packages`.
+When you pull for a project, `cocon` also creates symlinks in `./.cocon/packages` so the project has local entry points into the shared cache.
 
 ## CLI commands
 
@@ -19,7 +17,7 @@ Storage location can be configured with a `global` boolean:
 Pull and cache package repository source.
 
 ```bash
-cocon pull [--global|-g] <packages...>
+cocon pull <packages...>
 ```
 
 ### `sync`
@@ -28,7 +26,7 @@ Prefetch and cache repository sources for all dependencies in `package.json` in 
 Uses resolved project versions (installed version when available).
 
 ```bash
-cocon sync [--global|-g]
+cocon sync
 ```
 
 ### `status`
@@ -36,7 +34,7 @@ cocon sync [--global|-g]
 Show installed vs cached versions, missing targets, and the version each package should pull.
 
 ```bash
-cocon status [--global|-g]
+cocon status
 ```
 
 ### `prune`
@@ -44,24 +42,24 @@ cocon status [--global|-g]
 Remove old/unused cached versions while honoring keep rules.
 
 ```bash
-cocon prune [--global|-g] [--keep-latest <count>] [--no-keep-project-dependencies] [--keep <package@version...>] [--dry-run]
+cocon prune [--keep-latest <count>] [--no-keep-project-dependencies] [--keep <package@version...>] [--dry-run]
 ```
 
 ### `list`
 
-List all cached package versions in the selected scope.
+List all cached package versions in the shared cache.
 
 ```bash
-cocon list [--global|-g]
+cocon list
 ```
 
 ### `get`
 
-Get cached source info for one package in the selected scope (without downloading).
+Get cached source info for one package in the shared cache (without downloading).
 If multiple versions are cached, all matches are returned unless `--version` is supplied.
 
 ```bash
-cocon get [--global|-g] [--version <version>] <packageName>
+cocon get [--version <version>] <packageName>
 ```
 
 ## MCP tools
@@ -70,5 +68,5 @@ cocon get [--global|-g] [--version <version>] <packageName>
 - `sync_project_dependencies`: prefetch cache for all project dependencies in parallel
 - `get_cache_status`: show installed vs cached versions and missing target cache entries
 - `prune_cache`: prune old/unused cache versions with keep rules
-- `list_cached_package_sources`: list all package cache entries in selected scope
-- `get_cached_package_source`: inspect existing cached package entries in selected scope
+- `list_cached_package_sources`: list all package cache entries in the shared cache
+- `get_cached_package_source`: inspect existing cached package entries in the shared cache

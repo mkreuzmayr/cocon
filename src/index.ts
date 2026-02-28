@@ -22,9 +22,8 @@ program
 program
   .command('pull')
   .description('Pull source repositories for specified packages')
-  .option('-g, --global', 'Store package sources in ~/.cocon/packages', false)
   .argument('<packages...>', 'Package names to pull')
-  .action(async (packages: string[], options: { global: boolean }) => {
+  .action(async (packages: string[]) => {
     const cwd = process.cwd();
 
     const store = createPullStore({ packages });
@@ -34,7 +33,6 @@ program
     await executePullAction({
       store,
       packages,
-      global: options.global,
       cwd,
     }).finally(() => {
       pullView.unmount();
@@ -46,8 +44,7 @@ program
   .description(
     'Prefetch cache for all dependencies in package.json using resolved versions and parallel pulls'
   )
-  .option('-g, --global', 'Store package sources in ~/.cocon/packages', false)
-  .action(async (options: { global: boolean }) => {
+  .action(async () => {
     const dependencies = await getProjectDependencies(process.cwd());
     const packages = dependencies.map((dependency) => dependency.name);
 
@@ -64,7 +61,6 @@ program
     await executePullAction({
       store,
       packages,
-      global: options.global,
       cwd,
     }).finally(() => {
       pullView.unmount();
@@ -76,11 +72,8 @@ program
   .description(
     'Show installed vs cached versions, missing package cache entries, and target versions to pull'
   )
-  .option('-g, --global', 'Read package sources from ~/.cocon/packages', false)
-  .action(async (options: { global: boolean }) => {
-    const result = await getCacheStatus(process.cwd(), {
-      global: options.global,
-    });
+  .action(async () => {
+    const result = await getCacheStatus(process.cwd());
     console.log(`Store: ${result.storeDir}`);
 
     if (result.packages.length === 0) {
@@ -113,7 +106,6 @@ program
 program
   .command('prune')
   .description('Remove old or unused cached versions using keep rules')
-  .option('-g, --global', 'Read package sources from ~/.cocon/packages', false)
   .option(
     '--keep-latest <count>',
     'Keep latest N cached versions per package',
@@ -130,7 +122,6 @@ program
   .option('--dry-run', 'Show what would be removed without deleting')
   .action(
     async (options: {
-      global: boolean;
       keepLatest: string;
       keepProjectDependencies: boolean;
       keep?: string[];
@@ -142,7 +133,6 @@ program
       }
 
       const result = await pruneCache(process.cwd(), {
-        global: options.global,
         keepLatest,
         keepProjectDependencies: options.keepProjectDependencies,
         keep: options.keep,
@@ -174,12 +164,9 @@ program
 
 program
   .command('list')
-  .description('List cached package sources in selected scope')
-  .option('-g, --global', 'Read package sources from ~/.cocon/packages', false)
-  .action(async (options: { global: boolean }) => {
-    const result = await listCachedPackageSources(process.cwd(), {
-      global: options.global,
-    });
+  .description('List cached package sources in the shared cache')
+  .action(async () => {
+    const result = await listCachedPackageSources(process.cwd());
     console.log(`Store: ${result.storeDir}`);
 
     if (result.packages.length === 0) {
@@ -194,26 +181,19 @@ program
 
 program
   .command('get')
-  .description('Get cached package source information from selected scope')
-  .option('-g, --global', 'Read package sources from ~/.cocon/packages', false)
+  .description('Get cached package source information from the shared cache')
   .option('--version <version>', 'Filter to a specific cached version')
   .argument('<packageName>', 'Package name to inspect')
-  .action(
-    async (
-      packageName: string,
-      options: { global: boolean; version?: string }
-    ) => {
-      const result = await getCachedPackageSource(process.cwd(), packageName, {
-        global: options.global,
-        version: options.version,
-      });
+  .action(async (packageName: string, options: { version?: string }) => {
+    const result = await getCachedPackageSource(process.cwd(), packageName, {
+      version: options.version,
+    });
 
-      console.log(`Store: ${result.storeDir}`);
-      for (const pkg of result.packages) {
-        console.log(`- ${pkg.packageName}@${pkg.version}: ${pkg.outputDir}`);
-      }
+    console.log(`Store: ${result.storeDir}`);
+    for (const pkg of result.packages) {
+      console.log(`- ${pkg.packageName}@${pkg.version}: ${pkg.outputDir}`);
     }
-  );
+  });
 
 try {
   await program.parseAsync();

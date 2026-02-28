@@ -6,13 +6,17 @@ import {
   resolveInstalledPackageFromCwd,
 } from '../../../lib/package-json.ts';
 import { execAsync } from '../../../lib/spawn.ts';
-import { getStoreDir } from '../../../lib/store.ts';
+import {
+  ensureProjectPackageLink,
+  ensureStoreDir,
+  getProjectStoreDir,
+  getStoreDir,
+  getStoredPackagePath,
+} from '../../../lib/store.ts';
 import type {
   PackageSourceResult,
   PullProgressUpdate,
   PullResult,
-  SourceStorageOptions,
-  StoreOptions,
   SyncProjectDependenciesResult,
 } from '../../../lib/types.ts';
 import { downloadAndExtract } from './downloader.ts';
@@ -173,12 +177,11 @@ async function downloadSparseSubdirectory(
   repo: ResolvedRepository,
   packageName: string,
   version: string,
-  storeOptions: StoreOptions,
   subdirectory: string,
   ref: string | null
 ): Promise<void> {
-  const storeDir = getStoreDir(storeOptions);
-  const outputDir = path.join(storeDir, `${packageName}@${version}`);
+  const storeDir = await ensureStoreDir();
+  const outputDir = getStoredPackagePath(storeDir, packageName, version);
 
   await fsp.rm(outputDir, { recursive: true, force: true });
   await fsp.mkdir(path.dirname(outputDir), { recursive: true });
@@ -228,7 +231,6 @@ async function downloadRepositorySource(
   repo: ResolvedRepository,
   packageName: string,
   version: string,
-  storeOptions: StoreOptions,
   tag: string | null
 ): Promise<void> {
   if (repo.directory) {
@@ -236,7 +238,6 @@ async function downloadRepositorySource(
       repo,
       packageName,
       version,
-      storeOptions,
       repo.directory,
       tag
     );
@@ -249,8 +250,7 @@ async function downloadRepositorySource(
         getTagTarballUrl(repo, tag),
         packageName,
         version,
-        undefined,
-        storeOptions
+        undefined
       );
       return;
     } catch (error) {
@@ -266,13 +266,7 @@ async function downloadRepositorySource(
 
   for (const url of fallbackUrls) {
     try {
-      await downloadAndExtract(
-        url,
-        packageName,
-        version,
-        undefined,
-        storeOptions
-      );
+      await downloadAndExtract(url, packageName, version, undefined);
       return;
     } catch (error) {
       lastError = error as Error;
@@ -291,20 +285,14 @@ async function downloadRepositorySource(
 
 export async function ensurePackageSourceFromInstalled(
   cwd: string,
-  packageName: string,
-  options?: SourceStorageOptions
+  packageName: string
 ): Promise<PackageSourceResult> {
-  const storeDir = getStoreDir({ global: options?.global, cwd });
+  const storeDir = getStoreDir();
   const installed = await resolveInstalledPackageFromCwd(packageName, cwd);
   const version = installed.version;
-  const packageVersionKey = `${packageName}@${version}`;
-  const outputDir = path.join(storeDir, packageVersionKey);
+  const outputDir = getStoredPackagePath(storeDir, packageName, version);
 
   const localRepo = normalizeRepositoryToHttpsRepo(installed.repository);
-
-  const localPackagePath = localRepo?.repo.directory
-    ? path.join(outputDir, localRepo.repo.directory)
-    : outputDir;
 
   const packageExists = await fsp
     .stat(outputDir)
@@ -312,11 +300,20 @@ export async function ensurePackageSourceFromInstalled(
     .catch(() => false);
 
   if (packageExists) {
+    const repositoryPath = await ensureProjectPackageLink(
+      cwd,
+      packageName,
+      version
+    );
+    const packagePath = localRepo?.repo.directory
+      ? path.join(repositoryPath, localRepo.repo.directory)
+      : repositoryPath;
+
     return {
       packageName,
       version,
-      repositoryPath: outputDir,
-      packagePath: localPackagePath,
+      repositoryPath,
+      packagePath,
       packageSubdirectory: localRepo?.repo.directory ?? null,
       fromCache: true,
     };
@@ -341,22 +338,21 @@ export async function ensurePackageSourceFromInstalled(
     ? { tag: null, usedFallback: true }
     : await findTag(repo, version, packageName);
 
-  await downloadRepositorySource(
-    repo,
-    packageName,
-    version,
-    { global: options?.global, cwd },
-    tagResult.tag
-  );
+  await downloadRepositorySource(repo, packageName, version, tagResult.tag);
 
+  const repositoryPath = await ensureProjectPackageLink(
+    cwd,
+    packageName,
+    version
+  );
   const packagePath = repo.directory
-    ? path.join(outputDir, repo.directory)
-    : outputDir;
+    ? path.join(repositoryPath, repo.directory)
+    : repositoryPath;
 
   return {
     packageName,
     version,
-    repositoryPath: outputDir,
+    repositoryPath,
     packagePath,
     packageSubdirectory: repo.directory ?? null,
     fromCache: false,
@@ -366,10 +362,10 @@ export async function ensurePackageSourceFromInstalled(
 export async function pullPackageForProject(
   cwd: string,
   packageName: string,
-  options?: SourceStorageOptions,
   onProgress?: (update: PullProgressUpdate) => void
 ): Promise<PullResult> {
-  const storeDir = getStoreDir({ global: options?.global, cwd });
+  const storeDir = getStoreDir();
+  const projectStoreDir = getProjectStoreDir(cwd);
 
   const reportProgress = (update: PullProgressUpdate) => {
     onProgress?.(update);
@@ -379,8 +375,11 @@ export async function pullPackageForProject(
     reportProgress({ status: 'fetching' });
     const installed = await resolveInstalledPackageFromCwd(packageName, cwd);
 
-    const packageVersionKey = `${packageName}@${installed.version}`;
-    const outputDir = path.join(storeDir, packageVersionKey);
+    const outputDir = getStoredPackagePath(
+      storeDir,
+      packageName,
+      installed.version
+    );
     reportProgress({ version: installed.version });
 
     const packageExists = await fsp
@@ -389,12 +388,14 @@ export async function pullPackageForProject(
       .catch(() => false);
 
     if (packageExists) {
+      await ensureProjectPackageLink(cwd, packageName, installed.version);
       const result: PullResult = {
         packageName,
         version: installed.version,
         status: 'complete',
         fromCache: true,
         storeDir,
+        projectStoreDir,
       };
       reportProgress({
         status: 'complete',
@@ -440,9 +441,9 @@ export async function pullPackageForProject(
       repo,
       packageName,
       installed.version,
-      { global: options?.global, cwd },
       tagResult.tag
     );
+    await ensureProjectPackageLink(cwd, packageName, installed.version);
 
     const result: PullResult = {
       packageName,
@@ -450,6 +451,7 @@ export async function pullPackageForProject(
       status: 'complete',
       fromCache: false,
       storeDir,
+      projectStoreDir,
     };
     reportProgress({
       status: 'complete',
@@ -468,25 +470,24 @@ export async function pullPackageForProject(
       status: 'error',
       error: message,
       storeDir,
+      projectStoreDir,
     };
   }
 }
 
 export async function syncProjectDependencies(
-  cwd: string,
-  options?: SourceStorageOptions
+  cwd: string
 ): Promise<SyncProjectDependenciesResult> {
   const dependencies = await getProjectDependencies(cwd);
   const packages = dependencies.map((dependency) => dependency.name);
 
   const results = await Promise.all(
-    packages.map((packageName) =>
-      pullPackageForProject(cwd, packageName, options)
-    )
+    packages.map((packageName) => pullPackageForProject(cwd, packageName))
   );
 
   return {
-    storeDir: getStoreDir({ global: options?.global, cwd }),
+    storeDir: getStoreDir(),
+    projectStoreDir: getProjectStoreDir(cwd),
     packages,
     results,
   };

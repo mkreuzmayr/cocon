@@ -7,11 +7,6 @@ export interface PackageSourceResult {
   fromCache: boolean;
 }
 
-export interface StoreOptions {
-  global?: boolean;
-  cwd?: string;
-}
-
 export interface StoredPackageEntry {
   packageName: string;
   version: string;
@@ -25,6 +20,7 @@ export interface PullResult {
   error?: string;
   fromCache?: boolean;
   storeDir: string;
+  projectStoreDir: string;
 }
 
 export type PullProgressStatus =
@@ -56,6 +52,7 @@ export interface CachedPackageSourceResult {
 
 export interface SyncProjectDependenciesResult {
   storeDir: string;
+  projectStoreDir: string;
   packages: string[];
   results: PullResult[];
 }
@@ -80,15 +77,11 @@ export interface CacheStatusResult {
   packages: CacheStatusEntry[];
 }
 
-export interface SourceStorageOptions {
-  global?: boolean;
-}
-
-export interface GetCachedSourceOptions extends SourceStorageOptions {
+export interface GetCachedSourceOptions {
   version?: string;
 }
 
-export interface PruneCacheOptions extends SourceStorageOptions {
+export interface PruneCacheOptions {
   keepLatest?: number;
   keepProjectDependencies?: boolean;
   keep?: string[];

@@ -145,35 +145,16 @@ async function resolveRepositoryFromReadme(
   return normalizeRepositoryToHttpsRepo(repositoryUrl)?.repo ?? null;
 }
 
-function isDefinitelyTypedRepo(repo: ResolvedRepository): boolean {
-  return (
-    repo.host === 'github' &&
-    repo.owner.toLowerCase() === 'definitelytyped' &&
-    repo.repo.toLowerCase() === 'definitelytyped'
-  );
-}
-
-function inferTypesSubdirectory(
-  packageName: string,
-  repo: ResolvedRepository
-): string | null {
-  if (!packageName.startsWith('@types/') || !isDefinitelyTypedRepo(repo)) {
-    return null;
-  }
-
-  const typeName = packageName.slice('@types/'.length);
-  if (!typeName) {
-    return null;
-  }
-
-  return `types/${typeName}`;
-}
-
 function shouldSkipTagLookup(
   packageName: string,
   repo: ResolvedRepository
 ): boolean {
-  return packageName.startsWith('@types/') && isDefinitelyTypedRepo(repo);
+  return (
+    packageName.startsWith('@types/') &&
+    repo.host === 'github' &&
+    repo.owner.toLowerCase() === 'definitelytyped' &&
+    repo.repo.toLowerCase() === 'definitelytyped'
+  );
 }
 
 async function runGitCommand(args: string[]): Promise<void> {
@@ -250,14 +231,13 @@ async function downloadRepositorySource(
   storeOptions: StoreOptions,
   tag: string | null
 ): Promise<void> {
-  const typesSubdirectory = inferTypesSubdirectory(packageName, repo);
-  if (typesSubdirectory) {
+  if (repo.directory) {
     await downloadSparseSubdirectory(
       repo,
       packageName,
       version,
       storeOptions,
-      typesSubdirectory,
+      repo.directory,
       tag
     );
     return;
@@ -321,9 +301,9 @@ export async function ensurePackageSourceFromInstalled(
   const outputDir = path.join(storeDir, packageVersionKey);
 
   const localRepo = normalizeRepositoryToHttpsRepo(installed.repository);
-  const localPackageSubdirectory = localRepo?.repo.directory ?? null;
-  const localPackagePath = localPackageSubdirectory
-    ? path.join(outputDir, localPackageSubdirectory)
+
+  const localPackagePath = localRepo?.repo.directory
+    ? path.join(outputDir, localRepo.repo.directory)
     : outputDir;
 
   const packageExists = await fsp
@@ -337,7 +317,7 @@ export async function ensurePackageSourceFromInstalled(
       version,
       repositoryPath: outputDir,
       packagePath: localPackagePath,
-      packageSubdirectory: localPackageSubdirectory,
+      packageSubdirectory: localRepo?.repo.directory ?? null,
       fromCache: true,
     };
   }
@@ -369,10 +349,8 @@ export async function ensurePackageSourceFromInstalled(
     tagResult.tag
   );
 
-  const packageSubdirectory =
-    repo.directory ?? inferTypesSubdirectory(packageName, repo) ?? null;
-  const packagePath = packageSubdirectory
-    ? path.join(outputDir, packageSubdirectory)
+  const packagePath = repo.directory
+    ? path.join(outputDir, repo.directory)
     : outputDir;
 
   return {
@@ -380,7 +358,7 @@ export async function ensurePackageSourceFromInstalled(
     version,
     repositoryPath: outputDir,
     packagePath,
-    packageSubdirectory,
+    packageSubdirectory: repo.directory ?? null,
     fromCache: false,
   };
 }

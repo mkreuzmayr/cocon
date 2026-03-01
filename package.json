@@ -6,7 +6,7 @@
   "author": "mkreuzmayr",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mkreuzmayr/cocon.git"
+    "url": "git+https://github.com/mkreuzmayr/cocon.git"
   },
   "bin": {
     "cocon": "dist/cocon.mjs",

@@ -1,6 +1,6 @@
 {
   "name": "@mkrz/cocon",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Clone npm package source code for agentic coding tool context",
   "license": "MIT",
   "author": "mkreuzmayr",

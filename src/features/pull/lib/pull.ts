@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import {
   getProjectDependencies,
+  isWorkspaceSpecifier,
   resolveInstalledPackageFromCwd,
 } from '../../../lib/package-json.ts';
 import { execAsync } from '../../../lib/spawn.ts';
@@ -29,125 +30,6 @@ import {
   type ResolvedRepository,
 } from './repo-resolver.ts';
 import { findTag } from './tag-finder.ts';
-
-const README_FILE_PATTERN = /^readme(?:\.[^.]+)?$/i;
-const GITHUB_REPO_PATTERN =
-  /(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:[/?#][^\s<]*)?/gi;
-
-interface ReadmeRepositoryCandidate {
-  owner: string;
-  repo: string;
-  score: number;
-  count: number;
-}
-
-function getPackageRepositoryToken(packageName: string): string {
-  if (!packageName.startsWith('@')) {
-    return packageName.toLowerCase();
-  }
-
-  const [, unscopedName] = packageName.split('/');
-  return (unscopedName ?? packageName).toLowerCase();
-}
-
-function scoreReadmeRepositoryCandidate(
-  repositoryName: string,
-  packageToken: string
-): number {
-  const normalizedRepository = repositoryName.toLowerCase();
-  if (normalizedRepository === packageToken) {
-    return 3;
-  }
-  if (normalizedRepository.includes(packageToken)) {
-    return 2;
-  }
-  if (packageToken.includes(normalizedRepository)) {
-    return 1;
-  }
-  return 0;
-}
-
-function findReadmeRepositoryUrl(
-  readmeContent: string,
-  packageName: string
-): string | null {
-  const packageToken = getPackageRepositoryToken(packageName);
-  const candidates = new Map<string, ReadmeRepositoryCandidate>();
-
-  for (const match of readmeContent.matchAll(GITHUB_REPO_PATTERN)) {
-    const owner = match[1];
-    const repo = match[2]?.replace(/\.git$/i, '');
-    if (!owner || !repo) {
-      continue;
-    }
-
-    const key = `${owner.toLowerCase()}/${repo.toLowerCase()}`;
-    const existing = candidates.get(key);
-    if (existing) {
-      existing.count += 1;
-      continue;
-    }
-
-    candidates.set(key, {
-      owner,
-      repo,
-      score: scoreReadmeRepositoryCandidate(repo, packageToken),
-      count: 1,
-    });
-  }
-
-  const allCandidates = [...candidates.values()];
-  if (allCandidates.length === 0) {
-    return null;
-  }
-
-  const strongMatch = allCandidates
-    .filter((candidate) => candidate.score > 0)
-    .sort((a, b) => b.score - a.score || b.count - a.count)[0];
-
-  if (strongMatch) {
-    return `https://github.com/${strongMatch.owner}/${strongMatch.repo}`;
-  }
-
-  const repeatedFallback = allCandidates.sort((a, b) => b.count - a.count)[0];
-  if (repeatedFallback && repeatedFallback.count > 1) {
-    return `https://github.com/${repeatedFallback.owner}/${repeatedFallback.repo}`;
-  }
-
-  return null;
-}
-
-async function resolveRepositoryFromReadme(
-  packageDir: string,
-  packageName: string
-): Promise<ResolvedRepository | null> {
-  let readmeFilename: string | null = null;
-  try {
-    const entries = await fsp.readdir(packageDir);
-    readmeFilename = entries.find((e) => README_FILE_PATTERN.test(e)) ?? null;
-  } catch {
-    return null;
-  }
-
-  if (!readmeFilename) {
-    return null;
-  }
-
-  const readmePath = path.join(packageDir, readmeFilename);
-  let readmeContent: string;
-  try {
-    readmeContent = await fsp.readFile(readmePath, 'utf-8');
-  } catch {
-    return null;
-  }
-
-  const repositoryUrl = findReadmeRepositoryUrl(readmeContent, packageName);
-  if (!repositoryUrl) {
-    return null;
-  }
-
-  return normalizeRepositoryToHttpsRepo(repositoryUrl)?.repo ?? null;
-}
 
 function shouldSkipTagLookup(
   packageName: string,
@@ -283,6 +165,78 @@ async function downloadRepositorySource(
   );
 }
 
+async function pathExists(candidatePath: string): Promise<boolean> {
+  return fsp
+    .stat(candidatePath)
+    .then(() => true)
+    .catch(() => false);
+}
+
+async function findLocalRepositoryRoot(
+  startDir: string
+): Promise<string | null> {
+  let currentDir = path.resolve(startDir);
+  const root = path.parse(currentDir).root;
+
+  while (true) {
+    if (await pathExists(path.join(currentDir, '.git'))) {
+      return currentDir;
+    }
+
+    if (await pathExists(path.join(currentDir, 'pnpm-workspace.yaml'))) {
+      return currentDir;
+    }
+
+    if (currentDir === root) {
+      break;
+    }
+
+    currentDir = path.dirname(currentDir);
+  }
+
+  return null;
+}
+
+async function resolveLocalPackageSource(
+  packageDir: string
+): Promise<{ repositoryDir: string; packageSubdirectory: string | null }> {
+  const repositoryDir = await findLocalRepositoryRoot(packageDir);
+
+  if (!repositoryDir) {
+    return {
+      repositoryDir: packageDir,
+      packageSubdirectory: null,
+    };
+  }
+
+  const relativePackagePath = path.relative(repositoryDir, packageDir);
+
+  return {
+    repositoryDir,
+    packageSubdirectory:
+      relativePackagePath && relativePackagePath !== '.'
+        ? relativePackagePath
+        : null,
+  };
+}
+
+function buildSkippedPullResult(
+  packageName: string,
+  storeDir: string,
+  projectStoreDir: string,
+  version: string | undefined,
+  skipReason: 'workspace' | 'private'
+): PullResult {
+  return {
+    packageName,
+    version,
+    status: 'skipped',
+    skipReason,
+    storeDir,
+    projectStoreDir,
+  };
+}
+
 export async function ensurePackageSourceFromInstalled(
   cwd: string,
   packageName: string
@@ -291,6 +245,9 @@ export async function ensurePackageSourceFromInstalled(
   const installed = await resolveInstalledPackageFromCwd(packageName, cwd);
   const version = installed.version;
   const outputDir = getStoredPackagePath(storeDir, packageName, version);
+  const localPackageSource = installed.isLocalSource
+    ? await resolveLocalPackageSource(installed.realPackageDir)
+    : null;
 
   const localRepo = normalizeRepositoryToHttpsRepo(installed.repository);
 
@@ -305,32 +262,56 @@ export async function ensurePackageSourceFromInstalled(
       packageName,
       version
     );
-    const packagePath = localRepo?.repo.directory
-      ? path.join(repositoryPath, localRepo.repo.directory)
-      : repositoryPath;
+    const packageSubdirectory =
+      localPackageSource?.packageSubdirectory ??
+      localRepo?.repo.directory ??
+      null;
+    const packagePath = getCachedPackagePath(
+      repositoryPath,
+      packageSubdirectory
+    );
 
     return {
       packageName,
       version,
       repositoryPath,
       packagePath,
-      packageSubdirectory: localRepo?.repo.directory ?? null,
+      packageSubdirectory,
       fromCache: true,
+    };
+  }
+
+  if (localPackageSource) {
+    const packagePath = localPackageSource.packageSubdirectory
+      ? path.join(
+          localPackageSource.repositoryDir,
+          localPackageSource.packageSubdirectory
+        )
+      : localPackageSource.repositoryDir;
+
+    return {
+      packageName,
+      version,
+      repositoryPath: localPackageSource.repositoryDir,
+      packagePath,
+      packageSubdirectory: localPackageSource.packageSubdirectory,
+      fromCache: false,
     };
   }
 
   let repo = localRepo?.repo ?? null;
   if (!repo) {
-    const metadata = await fetchPackageMetadata(packageName, version, cwd);
-    repo = normalizeRepositoryToHttpsRepo(metadata.repository)?.repo ?? null;
-  }
-  if (!repo) {
-    repo = await resolveRepositoryFromReadme(installed.packageDir, packageName);
+    try {
+      const metadata = await fetchPackageMetadata(packageName, version, cwd);
+      repo = normalizeRepositoryToHttpsRepo(metadata.repository)?.repo ?? null;
+    } catch {
+      repo = null;
+    }
   }
 
   if (!repo) {
     throw new Error(
-      `No repository information found for ${packageName}@${version} in installed package, registry metadata, or package README`
+      `No repository metadata found for ${packageName}@${version}. This package is likely private or proprietary`
     );
   }
 
@@ -345,9 +326,10 @@ export async function ensurePackageSourceFromInstalled(
     packageName,
     version
   );
-  const packagePath = repo.directory
-    ? path.join(repositoryPath, repo.directory)
-    : repositoryPath;
+  const packagePath = getCachedPackagePath(
+    repositoryPath,
+    repo.directory ?? null
+  );
 
   return {
     packageName,
@@ -359,9 +341,19 @@ export async function ensurePackageSourceFromInstalled(
   };
 }
 
+function getCachedPackagePath(
+  repositoryPath: string,
+  packageSubdirectory: string | null
+): string {
+  return packageSubdirectory
+    ? path.join(repositoryPath, packageSubdirectory)
+    : repositoryPath;
+}
+
 export async function pullPackageForProject(
   cwd: string,
   packageName: string,
+  declaredSpec?: string,
   onProgress?: (update: PullProgressUpdate) => void
 ): Promise<PullResult> {
   const storeDir = getStoreDir();
@@ -372,6 +364,17 @@ export async function pullPackageForProject(
   };
 
   try {
+    if (declaredSpec && isWorkspaceSpecifier(declaredSpec)) {
+      reportProgress({ status: 'skipped', skipReason: 'workspace' });
+      return buildSkippedPullResult(
+        packageName,
+        storeDir,
+        projectStoreDir,
+        undefined,
+        'workspace'
+      );
+    }
+
     reportProgress({ status: 'fetching' });
     const installed = await resolveInstalledPackageFromCwd(packageName, cwd);
 
@@ -405,26 +408,49 @@ export async function pullPackageForProject(
       return result;
     }
 
-    let repo: ResolvedRepository | null =
-      normalizeRepositoryToHttpsRepo(installed.repository)?.repo ?? null;
-    if (!repo) {
-      const metadata = await fetchPackageMetadata(
+    if (installed.isLocalSource) {
+      reportProgress({
+        status: 'skipped',
+        version: installed.version,
+        skipReason: 'workspace',
+      });
+      return buildSkippedPullResult(
         packageName,
+        storeDir,
+        projectStoreDir,
         installed.version,
-        cwd
-      );
-      repo = normalizeRepositoryToHttpsRepo(metadata.repository)?.repo ?? null;
-    }
-    if (!repo) {
-      repo = await resolveRepositoryFromReadme(
-        installed.packageDir,
-        packageName
+        'workspace'
       );
     }
 
+    let repo: ResolvedRepository | null =
+      normalizeRepositoryToHttpsRepo(installed.repository)?.repo ?? null;
     if (!repo) {
-      throw new Error(
-        'No repository information found in installed package, registry metadata, or package README'
+      try {
+        const metadata = await fetchPackageMetadata(
+          packageName,
+          installed.version,
+          cwd
+        );
+        repo =
+          normalizeRepositoryToHttpsRepo(metadata.repository)?.repo ?? null;
+      } catch {
+        repo = null;
+      }
+    }
+
+    if (!repo) {
+      reportProgress({
+        status: 'skipped',
+        version: installed.version,
+        skipReason: 'private',
+      });
+      return buildSkippedPullResult(
+        packageName,
+        storeDir,
+        projectStoreDir,
+        installed.version,
+        'private'
       );
     }
 
@@ -482,7 +508,9 @@ export async function syncProjectDependencies(
   const packages = dependencies.map((dependency) => dependency.name);
 
   const results = await Promise.all(
-    packages.map((packageName) => pullPackageForProject(cwd, packageName))
+    dependencies.map((dependency) =>
+      pullPackageForProject(cwd, dependency.name, dependency.spec)
+    )
   );
 
   return {

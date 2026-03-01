@@ -20,6 +20,9 @@ export interface InstalledPackageFromCwd {
   repository?: string | { type?: string; url?: string; directory?: string };
   packageJsonPath: string;
   packageDir: string;
+  realPackageJsonPath: string;
+  realPackageDir: string;
+  isLocalSource: boolean;
 }
 
 export interface ProjectDependency {
@@ -88,6 +91,10 @@ export function normalizeVersionFromSpecifier(
   return null;
 }
 
+export function isWorkspaceSpecifier(specifier: string): boolean {
+  return /^\s*workspace:/i.test(specifier);
+}
+
 async function findPackageJsonFromEntryPoint(
   packageName: string,
   entryPoint: string
@@ -110,6 +117,50 @@ async function findPackageJsonFromEntryPoint(
   }
 
   return null;
+}
+
+function packageNameToSegments(packageName: string): string[] {
+  return packageName.split('/').filter(Boolean);
+}
+
+async function findPackageJsonFromNodeModules(
+  packageName: string,
+  cwd: string
+): Promise<string | null> {
+  let currentDir = cwd;
+  const root = path.parse(currentDir).root;
+  const packageSegments = packageNameToSegments(packageName);
+
+  while (true) {
+    const candidate = path.join(
+      currentDir,
+      'node_modules',
+      ...packageSegments,
+      'package.json'
+    );
+
+    try {
+      const content = await fsp.readFile(candidate, 'utf-8');
+      const pkg = JSON.parse(content) as { name?: string };
+      if (pkg.name === packageName) {
+        return candidate;
+      }
+    } catch {
+      // no readable package.json at this node_modules level
+    }
+
+    if (currentDir === root) {
+      break;
+    }
+
+    currentDir = path.dirname(currentDir);
+  }
+
+  return null;
+}
+
+function hasNodeModulesSegment(candidatePath: string): boolean {
+  return candidatePath.split(path.sep).includes('node_modules');
 }
 
 export async function resolveInstalledPackageFromCwd(
@@ -164,6 +215,13 @@ export async function resolveInstalledPackageFromCwd(
   }
 
   if (!modulePackageJsonPath) {
+    modulePackageJsonPath = await findPackageJsonFromNodeModules(
+      packageName,
+      resolvedCwd
+    );
+  }
+
+  if (!modulePackageJsonPath) {
     throw new Error(
       `Could not resolve installed package "${packageName}" from "${resolvedCwd}". Ensure dependencies are installed.`
     );
@@ -185,11 +243,19 @@ export async function resolveInstalledPackageFromCwd(
     );
   }
 
+  const realPackageJsonPath = await fsp
+    .realpath(modulePackageJsonPath)
+    .catch(() => modulePackageJsonPath);
+  const realPackageDir = path.dirname(realPackageJsonPath);
+
   return {
     name: modulePackageJson.name ?? packageName,
     version: modulePackageJson.version,
     repository: modulePackageJson.repository,
     packageJsonPath: modulePackageJsonPath,
     packageDir: path.dirname(modulePackageJsonPath),
+    realPackageJsonPath,
+    realPackageDir,
+    isLocalSource: !hasNodeModulesSegment(realPackageDir),
   };
 }

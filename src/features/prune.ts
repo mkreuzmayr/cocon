@@ -2,6 +2,7 @@ import { rm } from 'node:fs/promises';
 
 import {
   getProjectDependencies,
+  isWorkspaceSpecifier,
   normalizeVersionFromSpecifier,
   resolveInstalledPackageFromCwd,
 } from '../lib/package-json.ts';
@@ -21,6 +22,10 @@ async function getProjectTargetVersions(
 
   await Promise.all(
     dependencies.map(async (dependency) => {
+      if (isWorkspaceSpecifier(dependency.spec)) {
+        return;
+      }
+
       let targetVersion: string | null = null;
 
       try {

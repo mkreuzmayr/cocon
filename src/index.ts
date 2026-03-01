@@ -92,7 +92,10 @@ program
           ? pkg.cachedVersions.join(', ')
           : '(none)';
       const installed = pkg.installedVersion ?? '(not installed)';
-      const target = pkg.targetVersion ?? '(unknown)';
+      const target =
+        pkg.targetVersionSource === 'workspace'
+          ? '(workspace)'
+          : (pkg.targetVersion ?? '(unknown)');
       const status = pkg.isMissing ? 'MISSING' : 'OK';
 
       console.log(`\n${status} ${pkg.packageName}`);

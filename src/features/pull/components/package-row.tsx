@@ -8,10 +8,12 @@ export function StatusText({
   status,
   message,
   fromCache,
+  skipReason,
 }: {
   status: StatusType;
   message?: string;
   fromCache?: boolean;
+  skipReason?: 'workspace' | 'private';
 }): React.ReactElement {
   switch (status) {
     case 'pending':
@@ -24,6 +26,12 @@ export function StatusText({
       return <Text color="cyan">Downloading...</Text>;
     case 'complete':
       return <Text color="green">{fromCache ? 'Reused' : 'Downloaded'}</Text>;
+    case 'skipped':
+      return (
+        <Text color="yellow">
+          {skipReason === 'workspace' ? 'Workspace' : 'Private'}
+        </Text>
+      );
     case 'error':
       return <Text color="red">Error: {message}</Text>;
   }
@@ -43,6 +51,8 @@ function StatusIcon({ status }: { status: StatusType }): React.ReactElement {
       );
     case 'complete':
       return <Text color="green">[✓]</Text>;
+    case 'skipped':
+      return <Text color="yellow">[-]</Text>;
     case 'error':
       return <Text color="red">[✗]</Text>;
   }
@@ -76,6 +86,7 @@ export function PackageRow({ pkg }: { pkg: PackageState }): React.ReactElement {
         status={pkg.status}
         message={pkg.error}
         fromCache={pkg.fromCache}
+        skipReason={pkg.skipReason}
       />
     </Box>
   );

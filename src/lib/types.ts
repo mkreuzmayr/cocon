@@ -16,9 +16,10 @@ export interface StoredPackageEntry {
 export interface PullResult {
   packageName: string;
   version?: string;
-  status: 'complete' | 'error';
+  status: 'complete' | 'skipped' | 'error';
   error?: string;
   fromCache?: boolean;
+  skipReason?: 'workspace' | 'private';
   storeDir: string;
   projectStoreDir: string;
 }
@@ -28,6 +29,7 @@ export type PullProgressStatus =
   | 'finding-tag'
   | 'downloading'
   | 'complete'
+  | 'skipped'
   | 'error';
 
 export interface PullProgressUpdate {
@@ -35,6 +37,7 @@ export interface PullProgressUpdate {
   version?: string;
   error?: string;
   fromCache?: boolean;
+  skipReason?: 'workspace' | 'private';
 }
 
 export interface CachedPackageSource {
@@ -57,7 +60,11 @@ export interface SyncProjectDependenciesResult {
   results: PullResult[];
 }
 
-export type TargetVersionSource = 'installed' | 'declared-range' | 'unknown';
+export type TargetVersionSource =
+  | 'installed'
+  | 'declared-range'
+  | 'workspace'
+  | 'unknown';
 
 export interface CacheStatusEntry {
   packageName: string;

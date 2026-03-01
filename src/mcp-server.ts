@@ -112,6 +112,7 @@ server.registerTool(
     }
 
     const success = result.results.filter((item) => item.status === 'complete');
+    const skipped = result.results.filter((item) => item.status === 'skipped');
     const failed = result.results.filter((item) => item.status === 'error');
     const reused = success.filter((item) => item.fromCache).length;
     const downloaded = success.length - reused;
@@ -119,6 +120,11 @@ server.registerTool(
     const lines = result.results.map((item) => {
       if (item.status === 'error') {
         return `- FAIL ${item.packageName}: ${item.error}`;
+      }
+
+      if (item.status === 'skipped') {
+        const version = item.version ? `@${item.version}` : '';
+        return `- SKIP ${item.packageName}${version} (${item.skipReason ?? 'skipped'})`;
       }
 
       const version = item.version ? `@${item.version}` : '';
@@ -134,6 +140,7 @@ server.registerTool(
 Project links: ${displayPath(result.projectStoreDir)}
 Total: ${result.results.length}
 Succeeded: ${success.length}
+Skipped: ${skipped.length}
 Failed: ${failed.length}
 Reused: ${reused}
 Downloaded: ${downloaded}
@@ -185,7 +192,10 @@ server.registerTool(
           ? pkg.cachedVersions.join(', ')
           : '(none)';
       const installed = pkg.installedVersion ?? '(not installed)';
-      const target = pkg.targetVersion ?? '(unknown)';
+      const target =
+        pkg.targetVersionSource === 'workspace'
+          ? '(workspace)'
+          : (pkg.targetVersion ?? '(unknown)');
       const status = pkg.isMissing ? 'MISSING' : 'OK';
 
       return `${status} ${pkg.packageName}

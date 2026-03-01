@@ -4,6 +4,7 @@ export type StatusType =
   | 'finding-tag'
   | 'downloading'
   | 'complete'
+  | 'skipped'
   | 'error';
 
 export interface PackageState {
@@ -12,4 +13,5 @@ export interface PackageState {
   status: StatusType;
   error?: string;
   fromCache?: boolean;
+  skipReason?: 'workspace' | 'private';
 }

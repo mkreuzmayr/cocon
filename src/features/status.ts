@@ -1,5 +1,6 @@
 import {
   getProjectDependencies,
+  isWorkspaceSpecifier,
   normalizeVersionFromSpecifier,
   resolveInstalledPackageFromCwd,
 } from '../lib/package-json.ts';
@@ -41,6 +42,22 @@ export async function getCacheStatus(cwd: string): Promise<CacheStatusResult> {
 
   const packages = await Promise.all(
     dependencies.map(async (dependency): Promise<CacheStatusEntry> => {
+      if (isWorkspaceSpecifier(dependency.spec)) {
+        const cachedVersions = cachedVersionMap.get(dependency.name) ?? [];
+
+        return {
+          packageName: dependency.name,
+          declaredRange: dependency.spec,
+          declaredSource: dependency.source,
+          installedVersion: null,
+          targetVersion: null,
+          targetVersionSource: 'workspace',
+          cachedVersions,
+          isTargetCached: true,
+          isMissing: false,
+        };
+      }
+
       let installedVersion: string | null = null;
 
       try {

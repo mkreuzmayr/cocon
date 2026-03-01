@@ -21,6 +21,9 @@ export function PullView(props: {
     (pkg) => pkg.status === 'complete'
   ).length;
   const errorCount = packages.filter((pkg) => pkg.status === 'error').length;
+  const skippedCount = packages.filter(
+    (pkg) => pkg.status === 'skipped'
+  ).length;
   const reusedCount = packages.filter(
     (pkg) => pkg.status === 'complete' && pkg.fromCache
   ).length;
@@ -47,6 +50,16 @@ export function PullView(props: {
             </Text>
           )}
           {successCount > 0 && errorCount > 0 && <Text>, </Text>}
+          {successCount > 0 && skippedCount > 0 && errorCount === 0 && (
+            <Text>, </Text>
+          )}
+          {successCount > 0 && skippedCount > 0 && errorCount > 0 && (
+            <Text>, </Text>
+          )}
+          {skippedCount > 0 && (
+            <Text color="yellow">{skippedCount} skipped</Text>
+          )}
+          {skippedCount > 0 && errorCount > 0 && <Text>, </Text>}
           {errorCount > 0 && <Text color="red">{errorCount} failed</Text>}
         </Text>
         {done ? (
@@ -54,7 +67,7 @@ export function PullView(props: {
         ) : (
           <Text color="gray">Storing in {storeDir}</Text>
         )}
-        <Text color="gray">Linked in {projectStoreDir}</Text>
+        <Text color="gray">Linked to {projectStoreDir}</Text>
       </Box>
     </Box>
   );

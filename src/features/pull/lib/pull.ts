@@ -31,6 +31,61 @@ import {
 } from './repo-resolver.ts';
 import { findTag } from './tag-finder.ts';
 
+const README_FILE_PATTERN = /^readme(?:\.[^.]+)?$/i;
+const GITHUB_REPO_PATTERN =
+  /(?:https?:\/\/)?(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:[/?#][^\s<]*)?/gi;
+
+async function resolveRepositoryFromReadme(
+  packageDir: string,
+  packageName: string
+): Promise<ResolvedRepository | null> {
+  let readmeFilename: string | null = null;
+  try {
+    const entries = await fsp.readdir(packageDir);
+    readmeFilename = entries.find((e) => README_FILE_PATTERN.test(e)) ?? null;
+  } catch {
+    return null;
+  }
+
+  if (!readmeFilename) {
+    return null;
+  }
+
+  let readmeContent: string;
+  try {
+    readmeContent = await fsp.readFile(
+      path.join(packageDir, readmeFilename),
+      'utf-8'
+    );
+  } catch {
+    return null;
+  }
+
+  const repoName = packageName.startsWith('@')
+    ? packageName.split('/')[1]!
+    : packageName;
+
+  for (const match of readmeContent.matchAll(GITHUB_REPO_PATTERN)) {
+    const owner = match[1];
+    const repo = match[2]?.replace(/\.git$/i, '');
+
+    if (!owner || !repo) {
+      continue;
+    }
+
+    if (repo.toLowerCase() !== repoName.toLowerCase()) {
+      continue;
+    }
+
+    return (
+      normalizeRepositoryToHttpsRepo(`https://github.com/${owner}/${repo}`)
+        ?.repo ?? null
+    );
+  }
+
+  return null;
+}
+
 function shouldSkipTagLookup(
   packageName: string,
   repo: ResolvedRepository
@@ -310,8 +365,15 @@ export async function ensurePackageSourceFromInstalled(
   }
 
   if (!repo) {
+    repo = await resolveRepositoryFromReadme(
+      installed.realPackageDir,
+      packageName
+    );
+  }
+
+  if (!repo) {
     throw new Error(
-      `No repository metadata found for ${packageName}@${version}. This package is likely private or proprietary`
+      `No repository information found for ${packageName}@${version} in installed package, registry metadata, or package README`
     );
   }
 
@@ -437,6 +499,13 @@ export async function pullPackageForProject(
       } catch {
         repo = null;
       }
+    }
+
+    if (!repo) {
+      repo = await resolveRepositoryFromReadme(
+        installed.realPackageDir,
+        packageName
+      );
     }
 
     if (!repo) {

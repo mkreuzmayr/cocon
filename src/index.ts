@@ -6,7 +6,7 @@ import { executePullAction } from './features/pull/command.ts';
 import { renderPullView } from './features/pull/components/pull-view.tsx';
 import { createPullStore } from './features/pull/store.ts';
 import { getCacheStatus } from './features/status.ts';
-import { getProjectDependencies } from './lib/package-json.ts';
+import { executeSyncCommand } from './features/sync/command.ts';
 import {
   getCachedPackageSource,
   listCachedPackageSources,
@@ -44,27 +44,9 @@ program
   .description(
     'Prefetch cache for all dependencies in package.json using resolved versions and parallel pulls'
   )
-  .action(async () => {
-    const dependencies = await getProjectDependencies(process.cwd());
-    const packages = dependencies.map((dependency) => dependency.name);
-
-    if (packages.length === 0) {
-      console.log('No dependencies found in package.json.');
-      return;
-    }
-
-    const cwd = process.cwd();
-
-    const store = createPullStore({ packages });
-    const pullView = renderPullView({ store });
-
-    await executePullAction({
-      store,
-      packages,
-      cwd,
-    }).finally(() => {
-      pullView.unmount();
-    });
+  .option('--all', 'Sync all packages without the interactive picker')
+  .action(async (options: { all?: boolean }) => {
+    await executeSyncCommand({ all: options.all, cwd: process.cwd() });
   });
 
 program

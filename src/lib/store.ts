@@ -9,7 +9,7 @@ export function getStoreDir(): string {
 }
 
 export function getProjectStoreDir(cwd: string): string {
-  return path.join(cwd, '.cocon', 'packages');
+  return path.join(cwd, 'node_modules', '.cocon');
 }
 
 export function getStoredPackagePath(

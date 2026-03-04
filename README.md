@@ -8,7 +8,7 @@ It has two runtime surfaces:
 - An MCP server binary (`cocon-mcp`)
 
 Package sources are always stored in `~/.cocon/packages`.
-When you pull for a project, `cocon` also creates symlinks in `./.cocon/packages` so the project has local entry points into the shared cache.
+When you pull for a project, `cocon` also creates symlinks in `./node_modules/.cocon` so the project has local entry points into the shared cache.
 
 ## CLI commands
 
